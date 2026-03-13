@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 实现 RAG（检索增强生成）服务，包括 Qdrant 向量数据库集成、检索服务、索引服务和 Python Sidecar 嵌入服务。
+**Goal:** 实现 RAG（检索增强生成）服务，包括 Qdrant 向量数据库集成、检索服务、索引服务和嵌入服务。集成千问 3.5 LLM 进行对话生成。
 
-**Architecture:** RAG 服务分为三个独立服务：索引服务（文档分块、嵌入、存储）、检索服务（相似度搜索、过滤）、查询服务（查询改写、重排序、上下文构建）。嵌入生成通过 Python Sidecar HTTP 调用。
+**Architecture:** RAG 服务分为三个独立服务：索引服务（文档分块、嵌入、存储）、检索服务（相似度搜索、过滤）、查询服务（查询改写、重排序、上下文构建）。嵌入生成通过自定义 HTTP 服务调用。
 
-**Tech Stack:** Java (Spring AI), Qdrant, Python (FastAPI + sentence-transformers), bge-m3 模型
+**Tech Stack:** Java (Spring Boot), Qdrant, 千问 3.5 (LLM), 自定义 Embedding 服务
 
 ---
 
@@ -16,9 +16,19 @@
 - `2026-03-13-ai-agent-foundation-plan.md` - 基础架构计划（必须已完成）
 
 **环境准备:**
-- Qdrant 容器运行中
-- Python Sidecar 容器运行中
-- 网络连通性验证通过
+- Qdrant 容器运行中 (`http://localhost:6334`)
+- Embedding 服务运行中 (`http://localhost:58080/embedding`)
+- 千问 3.5 LLM 可访问 (`http://123.57.224.128:58080/v1`)
+
+**LLM 配置:**
+- Base URL: `http://123.57.224.128:58080/v1`
+- API Key: `sk-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0`
+- Model: `Qwen3.5-4B-Q4_K_M.gguf`
+
+**Embedding 配置:**
+- URL: `http://localhost:58080/embedding`
+- 请求参数：`{"input": "text"}`
+- 响应格式：`{"embedding": [float, ...]}`
 
 ---
 
@@ -48,7 +58,7 @@ public class QdrantConfig {
     private String host = "localhost";
     private int port = 6334;
     private String collection = "ai-agent-rag";
-    private int vectorSize = 1024; // bge-m3 output dimension
+    private int vectorSize = 768; // bge-m3 output dimension
 }
 ```
 
@@ -94,11 +104,17 @@ qdrant:
   host: ${QDRANT_HOST:localhost}
   port: ${QDRANT_PORT:6334}
   collection: ${QDRANT_COLLECTION:ai-agent-rag}
-  vector-size: 1024
+  vector-size: 768
 
 embedding:
-  service-url: ${EMBEDDING_SERVICE_URL:http://localhost:5000}
+  service-url: ${EMBEDDING_SERVICE_URL:http://localhost:58080/embedding}
   model: bge-m3
+
+# LLM 配置 - 千问 3.5
+llm:
+  base-url: ${LLM_BASE_URL:http://123.57.224.128:58080/v1}
+  api-key: ${LLM_API_KEY:sk-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0}
+  model: ${LLM_MODEL:Qwen3.5-4B-Q4_K_M.gguf}
 ```
 
 - [ ] **Step 4: 创建 Qdrant 配置测试**
@@ -289,7 +305,7 @@ git commit -m "feat: add Qdrant collection auto-initialization"
 
 ---
 
-## Chunk 2: Python Sidecar 嵌入服务客户端
+## Chunk 2: Embedding 服务客户端
 
 ### Task 3: 创建嵌入服务客户端
 
@@ -308,13 +324,12 @@ package com.aiagent.embedding;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.util.List;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class EmbeddingRequest {
-    private List<String> texts;
+    private String input;
 }
 ```
 
@@ -328,7 +343,7 @@ import java.util.List;
 
 @Data
 public class EmbeddingResponse {
-    private List<List<Float>> embeddings;
+    private List<Float> embedding;
 }
 ```
 
@@ -351,14 +366,12 @@ public interface EmbeddingService {
 ```java
 package com.aiagent.embedding;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -372,7 +385,7 @@ public class EmbeddingClient implements EmbeddingService {
     private final ObjectMapper objectMapper;
 
     public EmbeddingClient(
-            @Value("${embedding.service-url:http://localhost:5000}") String serviceUrl,
+            @Value("${embedding.service-url:http://localhost:58080/embedding}") String serviceUrl,
             ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         this.webClient = WebClient.builder()
@@ -384,21 +397,30 @@ public class EmbeddingClient implements EmbeddingService {
     public CompletableFuture<List<List<Float>>> embed(List<String> texts) {
         log.debug("Requesting embeddings for {} texts", texts.size());
 
-        EmbeddingRequest request = new EmbeddingRequest(texts);
+        // Process texts one by one or in batches depending on your embedding service
+        List<CompletableFuture<List<Float>>> futures = texts.stream()
+            .map(this::embedSingle)
+            .toList();
 
-        return webClient.post()
-            .uri("/embed")
-            .bodyValue(request)
-            .retrieve()
-            .bodyToMono(EmbeddingResponse.class)
-            .map(EmbeddingResponse::getEmbeddings)
-            .toFuture();
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+            .thenApply(v -> futures.stream()
+                .map(CompletableFuture::join)
+                .toList());
     }
 
     @Override
     public CompletableFuture<List<Float>> embedSingle(String text) {
-        return embed(List.of(text))
-            .thenApply(embeddings -> embeddings.get(0));
+        log.debug("Requesting embedding for text: {}", text.substring(0, Math.min(50, text.length())));
+
+        EmbeddingRequest request = new EmbeddingRequest(text);
+
+        return webClient.post()
+            .uri("/")
+            .bodyValue(request)
+            .retrieve()
+            .bodyToMono(EmbeddingResponse.class)
+            .map(EmbeddingResponse::getEmbedding)
+            .toFuture();
     }
 }
 ```
@@ -440,33 +462,33 @@ class EmbeddingClientTests {
     private EmbeddingClient client;
 
     @Test
-    void embed_returnsEmbeddings() throws Exception {
-        stubFor(post("/embed")
+    void embedSingle_returnsEmbedding() throws Exception {
+        stubFor(post("/")
             .willReturn(okJson("""
                 {
-                    "embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+                    "embedding": [0.1, 0.2, 0.3, 0.4, 0.5]
+                }
+                """)));
+
+        var result = client.embedSingle("test text").join();
+
+        assertEquals(5, result.size());
+        assertEquals(0.1f, result.get(0));
+    }
+
+    @Test
+    void embed_returnsMultipleEmbeddings() throws Exception {
+        stubFor(post("/")
+            .willReturn(okJson("""
+                {
+                    "embedding": [0.1, 0.2, 0.3, 0.4, 0.5]
                 }
                 """)));
 
         var result = client.embed(List.of("text1", "text2")).join();
 
         assertEquals(2, result.size());
-        assertEquals(3, result.get(0).size());
-    }
-
-    @Test
-    void embedSingle_returnsSingleEmbedding() throws Exception {
-        stubFor(post("/embed")
-            .willReturn(okJson("""
-                {
-                    "embeddings": [[0.1, 0.2, 0.3]]
-                }
-                """)));
-
-        var result = client.embedSingle("text1").join();
-
-        assertEquals(3, result.size());
-        assertEquals(0.1f, result.get(0));
+        assertEquals(5, result.get(0).size());
     }
 }
 ```
@@ -497,7 +519,7 @@ Expected: PASS
 git add backend/src/main/java/com/aiagent/embedding/
 git add backend/src/test/java/com/aiagent/embedding/
 git add backend/pom.xml
-git commit -m "feat: implement Python Sidecar embedding client"
+git commit -m "feat: implement custom embedding service client"
 ```
 
 ---
@@ -1077,13 +1099,15 @@ git commit -m "feat: implement RAG index service with document chunking"
 
 ---
 
-## Chunk 5: RAG 查询服务和 API
+## Chunk 5: RAG 查询服务和千问 3.5 集成
 
-### Task 6: 创建查询服务和聊天集成
+### Task 6: 创建查询服务和 LLM 集成
 
 **Files:**
 - Create: `backend/src/main/java/com/aiagent/rag/query/QueryService.java`
 - Create: `backend/src/main/java/com/aiagent/rag/query/QueryRewriter.java`
+- Create: `backend/src/main/java/com/aiagent/llm/LlmClient.java`
+- Create: `backend/src/main/java/com/aiagent/llm/LlmConfig.java`
 - Modify: `backend/src/main/java/com/aiagent/controller/ChatController.java`
 - Test: `backend/src/test/java/com/aiagent/rag/query/QueryServiceTests.java`
 
@@ -1094,37 +1118,107 @@ package com.aiagent.rag.query;
 
 import org.springframework.stereotype.Component;
 
-/**
- * Simple query rewriter - can be enhanced with LLM-based HyDE
- */
 @Component
 public class QueryRewriter {
-
-    /**
-     * Rewrite query for better retrieval
-     * Currently a simple identity function, can be enhanced with:
-     * - HyDE (Hypothetical Document Embeddings)
-     * - Query expansion
-     * - Synonym addition
-     */
     public String rewrite(String query) {
         if (query == null || query.trim().isEmpty()) {
             return "";
         }
-
-        // Basic cleanup
-        return query.trim()
-            .replaceAll("\\s+", " ")
-            .toLowerCase();
+        return query.trim().replaceAll("\\s+", " ");
     }
 }
 ```
 
-- [ ] **Step 2: 创建查询服务**
+- [ ] **Step 2: 创建 LLM 配置类**
+
+```java
+package com.aiagent.llm;
+
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+@Data
+@Component
+@ConfigurationProperties(prefix = "llm")
+public class LlmConfig {
+    private String baseUrl = "http://123.57.224.128:58080/v1";
+    private String apiKey = "sk-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0";
+    private String model = "Qwen3.5-4B-Q4_K_M.gguf";
+}
+```
+
+- [ ] **Step 3: 创建 LLM 客户端 (千问 3.5)**
+
+```java
+package com.aiagent.llm;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+@Service
+public class LlmClient {
+
+    private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
+    private final WebClient webClient;
+    private final LlmConfig config;
+    private final ObjectMapper objectMapper;
+
+    public LlmClient(LlmConfig config, ObjectMapper objectMapper) {
+        this.config = config;
+        this.objectMapper = objectMapper;
+        this.webClient = WebClient.builder()
+            .baseUrl(config.getBaseUrl())
+            .defaultHeader("Authorization", "Bearer " + config.getApiKey())
+            .defaultHeader("Content-Type", "application/json")
+            .build();
+    }
+
+    public CompletableFuture<String> complete(String prompt, String context) {
+        String userMessage = context != null && !context.isEmpty()
+            ? "Context:\n" + context + "\n\nQuestion: " + prompt
+            : prompt;
+
+        Map<String, Object> requestBody = Map.of(
+            "model", config.getModel(),
+            "messages", List.of(
+                Map.of("role", "user", "content", userMessage)
+            )
+        );
+
+        return webClient.post()
+            .uri("/chat/completions")
+            .bodyValue(requestBody)
+            .retrieve()
+            .bodyToMono(String.class)
+            .map(response -> {
+                try {
+                    var json = objectMapper.readTree(response);
+                    return json.get("choices").get(0)
+                        .get("message").get("content").asText();
+                } catch (Exception e) {
+                    log.error("Failed to parse LLM response", e);
+                    return "抱歉，生成响应时出现错误。";
+                }
+            })
+            .toFuture();
+    }
+}
+```
+
+- [ ] **Step 4: 创建查询服务 (含 LLM 集成)**
 
 ```java
 package com.aiagent.rag.query;
 
+import com.aiagent.llm.LlmClient;
 import com.aiagent.rag.search.SearchRequest;
 import com.aiagent.rag.search.SearchResult;
 import com.aiagent.rag.search.SearchService;
@@ -1138,43 +1232,53 @@ public class QueryService {
 
     private final SearchService searchService;
     private final QueryRewriter rewriter;
+    private final LlmClient llmClient;
 
-    public QueryService(SearchService searchService, QueryRewriter rewriter) {
+    public QueryService(SearchService searchService, QueryRewriter rewriter, LlmClient llmClient) {
         this.searchService = searchService;
         this.rewriter = rewriter;
+        this.llmClient = llmClient;
     }
 
     public CompletableFuture<List<SearchResult>> query(String userQuery, int topK) {
         String rewrittenQuery = rewriter.rewrite(userQuery);
-
-        SearchRequest request = SearchRequest.builder()
+        return searchService.search(SearchRequest.builder()
             .query(rewrittenQuery)
             .topK(topK)
             .scoreThreshold(0.5)
-            .build();
-
-        return searchService.search(request);
+            .build());
     }
 
     public CompletableFuture<String> buildContext(String userQuery, int topK) {
         return query(userQuery, topK)
             .thenApply(results -> {
                 StringBuilder context = new StringBuilder();
-                context.append("Relevant context:\n\n");
-
                 for (int i = 0; i < results.size(); i++) {
-                    SearchResult result = results.get(i);
-                    context.append(String.format("[%d] %s (score: %.2f, source: %s)\n",
-                        i + 1, result.getContent(), result.getScore(), result.getSource()));
+                    var result = results.get(i);
+                    context.append(String.format("[%d] %s (score: %.2f)\n",
+                        i + 1, result.getContent(), result.getScore()));
                 }
-
                 return context.toString();
+            });
+    }
+
+    /**
+     * 完整的 RAG 流程：检索 + LLM 生成
+     */
+    public CompletableFuture<String> ragComplete(String userQuery, int topK) {
+        return buildContext(userQuery, topK)
+            .thenCompose(context -> {
+                if (context.isBlank()) {
+                    return CompletableFuture.completedFuture(
+                        "抱歉，没有找到相关的上下文信息。");
+                }
+                return llmClient.complete(userQuery, context);
             });
     }
 }
 ```
 
-- [ ] **Step 3: 更新 Chat 控制器集成 RAG**
+- [ ] **Step 5: 更新 Chat 控制器 (千问 3.5 集成)**
 
 ```java
 package com.aiagent.controller;
@@ -1182,10 +1286,8 @@ package com.aiagent.controller;
 import com.aiagent.dto.ChatRequest;
 import com.aiagent.dto.ChatResponse;
 import com.aiagent.rag.query.QueryService;
-import com.aiagent.rag.search.SearchResult;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -1205,105 +1307,32 @@ public class ChatController {
             ? request.getSessionId()
             : UUID.randomUUID().toString();
 
-        // Query RAG for context
-        return queryService.buildContext(request.getMessage(), 5)
-            .thenApply(context -> {
+        return queryService.ragComplete(request.getMessage(), 5)
+            .thenApply(message -> {
                 ChatResponse response = new ChatResponse();
                 response.setSessionId(sessionId);
-                response.setModel("rag-enhanced");
-
-                // In a real implementation, this would call an LLM
-                // For now, return the context as the response
-                response.setMessage(
-                    "Context retrieved:\n\n" + context +
-                    "\n\n(This is a placeholder - LLM integration pending)");
-
+                response.setModel("qwen-3.5-rag");
+                response.setMessage(message);
                 return response;
             });
     }
 }
 ```
 
-- [ ] **Step 4: 创建查询服务测试**
-
-```java
-package com.aiagent.rag.query;
-
-import com.aiagent.rag.search.SearchResult;
-import com.aiagent.rag.search.SearchService;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-
-@SpringBootTest
-class QueryServiceTests {
-
-    @Autowired
-    private QueryService queryService;
-
-    @MockBean
-    private SearchService searchService;
-
-    @Test
-    void query_rewritesAndSearches() throws Exception {
-        SearchResult mockResult = SearchResult.builder()
-            .content("test content")
-            .score(0.85)
-            .source("test-source")
-            .build();
-
-        when(searchService.search(any(SearchRequest.class)))
-            .thenReturn(CompletableFuture.completedFuture(List.of(mockResult)));
-
-        var results = queryService.query("test query", 5).join();
-
-        assertEquals(1, results.size());
-        assertEquals("test content", results.get(0).getContent());
-    }
-
-    @Test
-    void buildContext_returnsFormattedContext() throws Exception {
-        SearchResult mockResult = SearchResult.builder()
-            .content("relevant info")
-            .score(0.9)
-            .source("doc1")
-            .build();
-
-        when(searchService.search(any(SearchRequest.class)))
-            .thenReturn(CompletableFuture.completedFuture(List.of(mockResult)));
-
-        String context = queryService.buildContext("test", 5).join();
-
-        assertTrue(context.contains("Relevant context"));
-        assertTrue(context.contains("relevant info"));
-        assertTrue(context.contains("score: 0.90"));
-    }
-}
-```
-
-- [ ] **Step 5: 运行测试**
+- [ ] **Step 6: 运行测试**
 
 ```bash
 cd backend
 mvn test -Dtest=QueryServiceTests
 ```
-Expected: PASS
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 7: 提交**
 
 ```bash
 git add backend/src/main/java/com/aiagent/rag/query/
+git add backend/src/main/java/com/aiagent/llm/
 git add backend/src/main/java/com/aiagent/controller/ChatController.java
-git add backend/src/test/java/com/aiagent/rag/query/
-git commit -m "feat: integrate RAG query service with chat endpoint"
+git commit -m "feat: integrate RAG with 千问 3.5 LLM"
 ```
 
 ---
@@ -1311,19 +1340,20 @@ git commit -m "feat: integrate RAG query service with chat endpoint"
 ## 测试策略
 
 RAG 服务测试覆盖：
-- 单元测试：每个 Service、Chunker、Rewriter
-- 集成测试：Qdrant 连接、嵌入服务调用
-- 端到端测试：完整 RAG 检索流程
+- 单元测试：每个 Service、Chunker、Rewriter、LlmClient
+- 集成测试：Qdrant 连接、Embedding 服务调用、千问 3.5 LLM 调用
+- 端到端测试：完整 RAG 检索 + LLM 生成流程
 
 ---
 
 ## 验收标准
 
-1. `POST /api/rag/index` 成功索引文档
-2. `POST /api/chat` 返回 RAG 增强的响应
-3. Qdrant 集合自动创建
-4. Python Sidecar 嵌入服务正常调用
-5. 分块逻辑正确处理长文档
+1. `POST /api/rag/index` 成功索引文档到 Qdrant
+2. `POST /api/chat` 返回千问 3.5 + RAG 增强的响应
+3. Qdrant 集合自动创建 (vector size: 768)
+4. Embedding 服务 (`http://localhost:58080/embedding`) 正常调用
+5. 千问 3.5 LLM (`http://123.57.224.128:58080/v1`) 正常调用
+6. 分块逻辑正确处理长文档
 
 ---
 
@@ -1331,7 +1361,7 @@ RAG 服务测试覆盖：
 
 RAG 服务基础功能完成后，可以增强：
 1. 语义分块 (Semantic Chunking)
-2. HyDE 查询重写
+2. HyDE 查询重写 (使用千问 3.5 生成假设答案)
 3. Cross-encoder 重排序
 4. 多向量索引支持
 5. 引用追踪和来源显示
