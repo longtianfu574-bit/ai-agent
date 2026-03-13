@@ -1,0 +1,32 @@
+# Git Worktrees
+.worktrees/
+worktrees/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Build targets
+target/
+build/
+*.class
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+.nyc_output/
