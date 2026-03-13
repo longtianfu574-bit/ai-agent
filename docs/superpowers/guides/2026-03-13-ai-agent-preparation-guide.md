@@ -262,10 +262,15 @@ EOF
 
 如果不想使用付费 API，可以部署本地模型。
 
-### 6.1 安装 Ollama
+### 6.1 安装 Ollama（推荐）
+
+Ollama 用于运行本地嵌入模型和对话模型。
+
+**Windows 安装：**
 
 1. 访问 https://ollama.ai/ 下载安装包
-2. 安装后验证：
+2. 运行安装程序
+3. 验证安装：
 
 ```bash
 ollama --version
@@ -274,28 +279,40 @@ ollama --version
 ### 6.2 拉取模型
 
 ```bash
-# 拉取嵌入模型 (用于 RAG)
+# 拉取嵌入模型 (用于 RAG 检索)
 ollama pull bge-m3
 
-# 拉取对话模型 (用于聊天)
+# 拉取对话模型 (可选，已有千问 3.5)
 ollama pull qwen2.5
 
 # 验证模型
-ollama run qwen2.5 "Hello"
+ollama list
 ```
 
-### 6.3 Ollama 服务配置
+### 6.3 测试嵌入 API
+
+```bash
+curl http://localhost:11434/api/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"model": "bge-m3", "prompt": "你好"}'
+```
+
+### 6.4 Ollama 服务配置
 
 Ollama 默认在 `http://localhost:11434` 运行。
 
-在 `.env` 中添加：
+在 `.env` 文件中配置：
 
 ```bash
 # Ollama 配置
-OLLAMA_BASE_URL=http://localhost:11434
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_BASE_URL=http://localhost:11434
 EMBEDDING_MODEL=bge-m3
-CHAT_MODEL=qwen2.5
 ```
+
+### 6.5 详细配置文档
+
+查看 [ollama-embedding-setup.md](ollama-embedding-setup.md) 获取完整指南。
 
 ---
 
