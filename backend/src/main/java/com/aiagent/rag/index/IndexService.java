@@ -79,9 +79,12 @@ public class IndexService {
                         Vector vector = Vector.newBuilder()
                             .addAllData(embedding).build();
 
+                        // Use integer ID for chunks (Qdrant supports both UUID and integer IDs)
+                        long chunkId = i; // Simple sequential ID for chunks
+
                         PointStruct point = PointStruct.newBuilder()
                             .setId(io.qdrant.client.grpc.Points.PointId.newBuilder()
-                                .setUuid(chunk.getId()).build())
+                                .setNum(chunkId).build())
                             .setVectors(Vectors.newBuilder()
                                 .setVector(vector).build())
                             .putAllPayload(payload)

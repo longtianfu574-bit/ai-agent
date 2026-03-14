@@ -42,7 +42,9 @@ public class DocumentChunker {
             }
 
             chunks.add(chunk.trim());
-            start = end - chunkOverlap;
+
+            // Calculate next start position with overlap
+            start = Math.max(start + 1, end - chunkOverlap);
         }
 
         return chunks;

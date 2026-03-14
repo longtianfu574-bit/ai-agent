@@ -11,5 +11,5 @@ public class QdrantConfig {
     private String host = "localhost";
     private int port = 6334;
     private String collection = "ai-agent-rag";
-    private int vectorSize = 768; // bge-m3 output dimension
+    private int vectorSize = 1024; // Qwen3-Embedding output dimension
 }
