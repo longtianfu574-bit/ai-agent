@@ -1,7 +1,7 @@
 server:
   port: 8080
   tomcat:
-    connection-timeout: 60000
+    connection-timeout: 300000  # 5 minutes for LLM responses
 
 spring:
   application:
@@ -10,7 +10,7 @@ spring:
     active: rag
   mvc:
     async:
-      request-timeout: 60000
+      request-timeout: 300000  # 5 minutes for LLM responses
 
 qdrant:
   host: ${QDRANT_HOST:localhost}
@@ -29,3 +29,13 @@ llm:
 
 memory:
   path: ./data/memory.db
+
+# MCP 配置
+mcp:
+  api-token: ${MCP_API_TOKEN:default-token}
+  servers:
+    filesystem: ${MCP_FILESYSTEM_URL:http://localhost:5001}
+    shell: ${MCP_SHELL_URL:http://localhost:5002}
+    database: ${MCP_DATABASE_URL:http://localhost:5003}
+    http: ${MCP_HTTP_URL:http://localhost:5004}
+    git: ${MCP_GIT_URL:http://localhost:5005}
