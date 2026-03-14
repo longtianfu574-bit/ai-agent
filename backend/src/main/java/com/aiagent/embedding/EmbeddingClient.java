@@ -46,10 +46,11 @@ public class EmbeddingClient implements EmbeddingService {
     public CompletableFuture<List<Float>> embedSingle(String text) {
         log.debug("Requesting embedding for text: {}", text.substring(0, Math.min(50, text.length())));
 
-        EmbeddingRequest request = new EmbeddingRequest(text);
+        EmbeddingRequest request = new EmbeddingRequest();
+        request.setInput(text);
 
         return webClient.post()
-            .uri("/")
+            .uri("/embeddings")
             .bodyValue(request)
             .retrieve()
             .bodyToMono(EmbeddingResponse.class)

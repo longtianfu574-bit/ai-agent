@@ -23,10 +23,17 @@ class EmbeddingClientTests {
 
     @Test
     void embedSingle_returnsEmbedding() throws Exception {
-        stubFor(post("/")
+        stubFor(post("/embeddings")
             .willReturn(okJson("""
                 {
-                    "embedding": [0.1, 0.2, 0.3, 0.4, 0.5]
+                    "model": "Qwen3-Embedding",
+                    "object": "list",
+                    "usage": {"prompt_tokens": 2, "total_tokens": 2},
+                    "data": [{
+                        "embedding": [0.1, 0.2, 0.3, 0.4, 0.5],
+                        "index": 0,
+                        "object": "embedding"
+                    }]
                 }
                 """)));
 
@@ -38,10 +45,17 @@ class EmbeddingClientTests {
 
     @Test
     void embed_returnsMultipleEmbeddings() throws Exception {
-        stubFor(post("/")
+        stubFor(post("/embeddings")
             .willReturn(okJson("""
                 {
-                    "embedding": [0.1, 0.2, 0.3, 0.4, 0.5]
+                    "model": "Qwen3-Embedding",
+                    "object": "list",
+                    "usage": {"prompt_tokens": 4, "total_tokens": 4},
+                    "data": [{
+                        "embedding": [0.1, 0.2, 0.3, 0.4, 0.5],
+                        "index": 0,
+                        "object": "embedding"
+                    }]
                 }
                 """)));
 

@@ -13,7 +13,7 @@ qdrant:
   collection: ai-agent-rag
 
 embedding:
-  service-url: ${EMBEDDING_SERVICE_URL:http://localhost:58080/embedding}
+  service-url: ${EMBEDDING_SERVICE_URL:http://localhost:58080/v1}
   model: Qwen3-Embedding
 
 # LLM 配置 - 千问 3.5
