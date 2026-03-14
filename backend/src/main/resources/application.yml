@@ -1,11 +1,16 @@
 server:
   port: 8080
+  tomcat:
+    connection-timeout: 60000
 
 spring:
   application:
     name: ai-agent
   profiles:
     active: rag
+  mvc:
+    async:
+      request-timeout: 60000
 
 qdrant:
   host: ${QDRANT_HOST:localhost}
