@@ -1,0 +1,2 @@
+# mcp-servers/http/requirements.txt
+-r ../requirements-common.txt

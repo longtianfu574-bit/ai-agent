@@ -1,0 +1,3 @@
+# mcp-servers/database/requirements.txt
+-r ../requirements-common.txt
+sqlalchemy>=2.0.0
