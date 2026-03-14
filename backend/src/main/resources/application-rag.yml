@@ -2,12 +2,19 @@ spring:
   config:
     activate:
       on-profile: rag
+  mvc:
+    async:
+      request-timeout: 60000
+
+server:
+  tomcat:
+    connection-timeout: 60000
 
 qdrant:
   host: ${QDRANT_HOST:localhost}
   port: ${QDRANT_PORT:6334}
   collection: ${QDRANT_COLLECTION:ai-agent-rag}
-  vector-size: 768
+  vector-size: 1024
 
 embedding:
   service-url: ${EMBEDDING_SERVICE_URL:http://localhost:58080/v1}
