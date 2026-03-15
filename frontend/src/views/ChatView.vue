@@ -235,15 +235,21 @@ const clearChat = () => {
 }
 
 .model-tag {
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  display: flex;
+  padding: 4px 12px !important;
+  height: auto !important;
+  border-radius: 20px !important;
+  font-size: 12px !important;
+  display: inline-flex !important;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: #fff !important;
+  border: none !important;
+  font-weight: 500;
+}
+
+.model-tag .el-icon {
+  font-size: 14px;
 }
 
 .header-actions {
