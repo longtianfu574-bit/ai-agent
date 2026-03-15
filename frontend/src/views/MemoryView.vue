@@ -4,7 +4,7 @@
     <header class="page-header">
       <div class="header-content">
         <h1 class="page-title">
-          <el-icon class="title-icon"><Memory /></el-icon>
+          <el-icon class="title-icon"><Collection /></el-icon>
           记忆管理
         </h1>
         <p class="page-desc">管理 AI 助手的长期记忆和上下文信息</p>
@@ -16,7 +16,7 @@
       <!-- 功能开发中状态 -->
       <div class="coming-soon">
         <div class="coming-soon-icon">
-          <el-icon><Memory /></el-icon>
+          <el-icon><Collection /></el-icon>
         </div>
         <h2>功能开发中</h2>
         <p>记忆管理功能即将上线，敬请期待...</p>
@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { Memory, User, Document, ChatDotRound } from '@element-plus/icons-vue'
+import { User, Document, ChatDotRound, Collection } from '@element-plus/icons-vue'
 </script>
 
 <style scoped>

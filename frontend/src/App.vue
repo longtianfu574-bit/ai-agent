@@ -20,7 +20,7 @@
             class="nav-item"
             active-class="active"
           >
-            <el-icon class="nav-icon"><component :is="item.icon" /></el-icon>
+            <el-icon class="nav-icon"><component :is="item.iconComponent" /></el-icon>
             <span class="nav-text">{{ item.name }}</span>
           </router-link>
         </nav>
@@ -44,16 +44,23 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Monitor, ChatDotRound, Tools, Document, Memory, Setting } from '@element-plus/icons-vue'
+import {
+  Monitor,
+  ChatDotRound,
+  Tools,
+  Document,
+  Collection,
+  Setting,
+} from '@element-plus/icons-vue'
 
 const route = useRoute()
 
 const menuItems = [
-  { path: '/chat', name: '智能对话', icon: ChatDotRound },
-  { path: '/skills', name: '技能管理', icon: Tools },
-  { path: '/documents', name: '文档管理', icon: Document },
-  { path: '/memory', name: '记忆管理', icon: Memory },
-  { path: '/settings', name: '系统设置', icon: Setting },
+  { path: '/chat', name: '智能对话', iconComponent: ChatDotRound },
+  { path: '/skills', name: '技能管理', iconComponent: Tools },
+  { path: '/documents', name: '文档管理', iconComponent: Document },
+  { path: '/memory', name: '记忆管理', iconComponent: Collection },
+  { path: '/settings', name: '系统设置', iconComponent: Setting },
 ]
 </script>
 
